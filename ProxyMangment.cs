@@ -112,7 +112,8 @@ namespace UDPBroadcast
                     SendPack sp = null;
                     lock(this.queue)
                     {
-                        sp = queue.Dequeue();
+                        if (queue.Count > 0)
+                            sp = queue.Dequeue();
                     }
                     if (sp != null)
                         sp.Result.Send(this.dataList.Take(resp.BufferCount).ToArray());

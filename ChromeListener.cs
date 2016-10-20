@@ -46,12 +46,18 @@ namespace UDPBroadcast
                 httpParse.RecvreqHeadSuccess += httpParse_RecvreqHeadSuccess;
                 httpParse.RecvReqLineSuccess += httpParse_RecvReqLineSuccess;
                 httpParse.RecvRequestSuccess += httpParse_RecvRequestSuccess;
+                httpParse.Close += httpParse_Close;
                 httpParse.StartRecvAndParse();
             }
             if (!IsClose)
             {
                 this.Listener.BeginAccept(EndAccept, null);
             }
+        }
+
+        void httpParse_Close(HttpParse obj)
+        {
+
         }
 
         void httpParse_RecvRequestSuccess(HttpParse obj)
@@ -96,6 +102,12 @@ namespace UDPBroadcast
             if (RecvRequestSuccess != null)
                 RecvRequestSuccess(this);
         }
+        public event Action<HttpParse> Close;
+        protected virtual void OnClose()
+        {
+            if (Close != null)
+                Close(this);
+        }
 
         public Socket sock;
         public RequestLineInfo ReqLine { get; private set; }
@@ -116,6 +128,7 @@ namespace UDPBroadcast
             this.sock.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, out sockError, endRecv, null);
         }
         public List<byte> sourceData = new List<byte>();
+        public int ReadPackCount = 0;
         private void endRecv(IAsyncResult result)
         {
             int recvCount = 0;
@@ -125,10 +138,14 @@ namespace UDPBroadcast
             }
             catch
             {
-
+                OnClose();
+                return;
             }
             if (recvCount == 0)
+            {
+                OnClose();
                 return;
+            }
             this.DataList.AddRange(this.buffer.Take(recvCount));
             if(State == ParseState.inited)
             {
@@ -181,8 +198,13 @@ namespace UDPBroadcast
             }
             if (State == ParseState.parseBodySuccess)
             {
+                if (ReadPackCount > 0)
+                {
+
+                }
+                ReadPackCount++;
                 OnRecvRequestSuccess();
-                return;
+                this.State = ParseState.inited;
             }
             this.sock.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, out sockError, endRecv, null);
         }
@@ -190,7 +212,8 @@ namespace UDPBroadcast
     public enum ReqMethod
     {
         GET,
-        POST
+        POST,
+        HEAD
     }
     public class RequestLineInfo
     {
@@ -209,6 +232,9 @@ namespace UDPBroadcast
                     break;
                 case "POST":
                     RequestMethod = ReqMethod.POST;
+                    break;
+                case "HEAD":
+                    RequestMethod = ReqMethod.HEAD;
                     break;
                 default:
                     throw new RequestLineParseException(reqLine, "reqMethod解析错误");

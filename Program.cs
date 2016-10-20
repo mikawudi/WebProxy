@@ -16,7 +16,13 @@ namespace UDPBroadcast
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
             Application.Run(new Form1());
+        }
+
+        static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            MessageBox.Show("遭遇未捕获的异常");
         }
     }
 }

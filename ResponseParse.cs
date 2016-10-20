@@ -14,12 +14,12 @@ namespace UDPBroadcast
         public RespLineInfo(string str)
         {
             var data = str.Split(new string[] { " " }, StringSplitOptions.RemoveEmptyEntries);
-            if (data.Length != 3)
+            if (data.Length < 3)
                 throw new Exception("Resp Line解析失败");
             if (!int.TryParse(data[1], out this.RespCode))
                 throw new Exception("RespLine Code Parse failed");
             this.Version = data[0];
-            this.RespDescription = data[2];
+            this.RespDescription = string.Join(" ", data.Skip(2));
         }
     }
     public class RespHeadInfo
@@ -66,11 +66,15 @@ namespace UDPBroadcast
                 var kvp = tempstr.Split(new string[] { ": " }, StringSplitOptions.RemoveEmptyEntries);
                 if(kvp.Length == 1)
                 {
-                    Data.Add(kvp[0], null);
+                    if (!Data.ContainsKey(kvp[0]))
+                        Data.Add(kvp[0], null);
                 }
                 if(kvp.Length == 2)
                 {
-                    Data.Add(kvp[0], kvp[1]);
+                    if (Data.ContainsKey(kvp[0]))
+                        Data[kvp[0]] = Data[kvp[0]] + "\r\n" + kvp[1];
+                    else
+                        Data.Add(kvp[0], kvp[1]);
                 }
             }
         }
@@ -97,11 +101,19 @@ namespace UDPBroadcast
             {
                 return null;
             }
-            var tempRespLine = new RespLineInfo(Encoding.ASCII.GetString(buffer, 0, respLineIndex - 1));
+            RespLineInfo tempRespLine = null;
+            try
+            { 
+                tempRespLine = new RespLineInfo(Encoding.ASCII.GetString(buffer, 0, respLineIndex - 1)); 
+            }
+            catch
+            {
+                return null;
+            }
             if (tempRespLine == null)
                 return null;
             buffer = buffer.Skip(respLineIndex + 1).ToArray();
-            int dataCount = (respLineIndex + 2);
+            int dataCount = (respLineIndex + 1);
             int index = -1;
             for(int i = 0; i < buffer.Length - 3; i++)
             {
@@ -123,9 +135,14 @@ namespace UDPBroadcast
             if (clen == -1)
                 return null;
             //不包含Conten-length,有可能是非200,或者是Chunked
-            if(clen == 0 && responseHead.IsChunkedThrans)
+            if(clen == 0)
             {
                 //解析Checked数据包
+                if(responseHead.IsChunkedThrans)
+                {
+                    return null;
+                }
+                return new RespInfo() { BufferCount = dataCount, RespLine = tempRespLine, RespHead = responseHead };
             }
             else if(clen > 0)
             {
@@ -137,7 +154,8 @@ namespace UDPBroadcast
                 }
                 return null;
             }
-            throw new Exception("length parse exception");
+            return null;
+            //throw new Exception("length parse exception");
         }
     }
     public class ResponseParse

@@ -56,6 +56,7 @@ namespace UDPBroadcast
 
         private void button1_Click(object sender, EventArgs e)
         {
+            throw new Exception("dasdasd");
             Socket SendSock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             SendSock.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, 1);
             var buf = Encoding.ASCII.GetBytes("this is test");
