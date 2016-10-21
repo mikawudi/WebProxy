@@ -140,7 +140,34 @@ namespace UDPBroadcast
                 //解析Checked数据包
                 if(responseHead.IsChunkedThrans)
                 {
-                    return null;
+                    int dataleng = 0;
+                    int b = 0;
+                    while(true)
+                    {
+                        int chunkHeadLength = 0;
+                        int chunkLeng = GetChunkLength(buffer, out chunkHeadLength);
+                        if (chunkLeng == -1)
+                            return null;
+                        if (chunkLeng == 0)
+                        {
+                            dataleng += (chunkHeadLength + 4);
+                            if (buffer.Length < dataleng)
+                                return null;
+                            break;
+                        }
+                        dataleng += (chunkHeadLength + 4 + chunkLeng);
+                        if (buffer.Length < dataleng)
+                        {
+                            if(b == 2)
+                            {
+                                return null;
+                            }
+                            return null;
+                        }
+                        buffer = buffer.Skip(4 + chunkHeadLength + chunkLeng).ToArray();
+                        b++;
+                    }
+                    dataCount += dataleng;
                 }
                 return new RespInfo() { BufferCount = dataCount, RespLine = tempRespLine, RespHead = responseHead };
             }
@@ -157,6 +184,37 @@ namespace UDPBroadcast
             return null;
             //throw new Exception("length parse exception");
         }
+        private static int GetChunkLength(byte[] buffer, out int chunkHeadLeng)
+        {
+            int index = -1;
+            int resultLength = -1;
+            for(int i = 0; i < buffer.Length - 1; i++)
+            {
+                if (buffer[i] == '\r' && buffer[i + 1] == '\n')
+                {
+                    index = i;
+                    break;
+                }
+            }
+            if(index == -1)
+            {
+                chunkHeadLeng = 0;
+                return resultLength;
+            }
+            var tempStr = Encoding.ASCII.GetString(buffer, 0, index);
+            try
+            {
+                resultLength = Convert.ToInt32(tempStr, 16);
+            }
+            catch
+            {
+                chunkHeadLeng = 0;
+                return -1;
+            }
+            chunkHeadLeng = index;
+            return resultLength;
+        }
+
     }
     public class ResponseParse
     {

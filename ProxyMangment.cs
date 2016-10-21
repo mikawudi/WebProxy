@@ -11,7 +11,7 @@ namespace UDPBroadcast
 {
     public class ProxyMangment
     {
-        #region 单例子部分
+        #region 单例部分
         private static ProxyMangment _instance;
         public static ProxyMangment GetInstance()
         {
@@ -25,7 +25,7 @@ namespace UDPBroadcast
             return _instance;
         }
         #endregion
-        public Dictionary<string, RemoteClient> ConDic = new Dictionary<string, RemoteClient>();
+        public Dictionary<IPAddress, RemoteClient> ConDic = new Dictionary<IPAddress, RemoteClient>();
         private ProxyMangment()
         {
 
@@ -33,15 +33,42 @@ namespace UDPBroadcast
         public void SendData(string host, byte[] requestPack, Socket resultContext)
         {
             RemoteClient client = null;
+            try
+            {
+                var result = Dns.GetHostEntry(host);
+                var address = result.AddressList[0];
+                lock (ConDic)
+                {
+                    if (!ConDic.TryGetValue(address, out client))
+                    {
+                        client = new RemoteClient(address);
+                        client.ConnectionClose += client_ConnectionClose;
+                        client.ConnectFail += client_ConnectFail;
+                        ConDic.Add(address, client);
+                    }
+                }
+                client.AddDataToQueue(requestPack, resultContext);
+            }
+            catch
+            {
+                
+            }
+        }
+
+        void client_ConnectFail(RemoteClient obj, Exception arg2)
+        {
+            lock (ConDic)
+            {
+                ConDic.Remove(obj.address);
+            }
+        }
+
+        void client_ConnectionClose(RemoteClient obj)
+        {
             lock(ConDic)
             {
-                if(!ConDic.TryGetValue(host, out client))
-                {
-                    client = new RemoteClient(host);
-                    ConDic.Add(host, client);
-                }
+                ConDic.Remove(obj.address);
             }
-            client.AddDataToQueue(requestPack, resultContext);
         }
     }
 
@@ -65,21 +92,36 @@ namespace UDPBroadcast
         }
         private byte[] buffer = new byte[1024];
         private List<byte> dataList = new List<byte>();
-        public RemoteClient(string host)
+        public IPAddress address = null;
+        bool isConnect = false;
+        bool isFailed = false;
+        public RemoteClient(IPAddress address)
         {
-            var result = Dns.GetHostEntry(host);
-            var address = result.AddressList[0];
+            this.address = address;
+            this.ConnectionClose += RemoteClient_ConnectionClose;
+            this.ConnectFail += RemoteClient_ConnectFail;
             this.SockObj = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             this.SockObj.BeginConnect(new IPEndPoint(address, 80), EndConnect, SockObj);
+        }
+
+        void RemoteClient_ConnectFail(RemoteClient arg1, Exception arg2)
+        {
+            this.isFailed = true;
+        }
+
+        void RemoteClient_ConnectionClose(RemoteClient obj)
+        {
+            this.isConnect = false;
+            this.evn.Set();
         }
         private void EndConnect(IAsyncResult result)
         {
             try
             {
                 this.SockObj.EndConnect(result);
+                isConnect = true;
                 this.SockObj.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, EndRecv, null);
                 new Thread(WorkThread).Start();
-
             }
             catch(Exception ex)
             {
@@ -127,6 +169,20 @@ namespace UDPBroadcast
             while(true)
             {
                 this.evn.WaitOne();
+                if (this.isConnect == false)
+                {
+                    while(queue.Count > 0)
+                    {
+                        try
+                        {
+                            queue.Dequeue().Result.Close();
+                        }
+                        catch{
+
+                        }
+                    }
+                    return;
+                }
                 SendPack pack = null;
                 foreach(var q in queue)
                 {
@@ -180,6 +236,51 @@ namespace UDPBroadcast
             {
                 queue.Enqueue(new SendPack(data, context));
                 evn.Set();
+            }
+        }
+        //public void AddDataToQueue(byte[] data, Socket context)
+        //{
+        //    lock (queue)
+        //    {
+        //        var c = new SendPack(data, context);
+        //        c.IsSend = true;
+        //        queue.Enqueue(c);
+        //        while(true)
+        //        {
+        //            if(this.isConnect == false && this.isFailed == false)
+        //            {
+        //                Thread.Sleep(100);
+        //                continue;
+        //            }
+        //            break;
+        //        }
+        //        if (this.isConnect == false || this.isFailed == true)
+        //            return;
+        //        //evn.Set();
+        //        try
+        //        {
+        //            this.SockObj.BeginSend(data, 0, data.Length, SocketFlags.None, endSend, data);
+        //        }
+        //        catch
+        //        {
+        //            this.isConnect = false;
+        //            this.isFailed = true;
+        //            context.Close();
+        //        }
+        //    }
+        //}
+        private void endSend(IAsyncResult result)
+        {
+            try
+            {
+                var data = result.AsyncState as byte[];
+                int sendData = this.SockObj.EndSend(result);
+                if (sendData != data.Length)
+                    return;
+            }
+            catch
+            {
+
             }
         }
         public class SendPack

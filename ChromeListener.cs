@@ -29,6 +29,7 @@ namespace UDPBroadcast
 
             }
         }
+        public Dictionary<HttpParse, int> HttpParseList = new Dictionary<HttpParse, int>();
         private void EndAccept(IAsyncResult result)
         {
             Socket client = null;
@@ -43,6 +44,10 @@ namespace UDPBroadcast
             if (client != null)
             {
                 var httpParse = new HttpParse(client);
+                lock (HttpParseList)
+                {
+                    HttpParseList.Add(httpParse, 0);
+                }
                 httpParse.RecvreqHeadSuccess += httpParse_RecvreqHeadSuccess;
                 httpParse.RecvReqLineSuccess += httpParse_RecvReqLineSuccess;
                 httpParse.RecvRequestSuccess += httpParse_RecvRequestSuccess;
@@ -57,11 +62,19 @@ namespace UDPBroadcast
 
         void httpParse_Close(HttpParse obj)
         {
-
+            lock(HttpParseList)
+            {
+                HttpParseList.Remove(obj);
+            }
         }
 
         void httpParse_RecvRequestSuccess(HttpParse obj)
         {
+            lock(HttpParseList)
+            {
+                if (HttpParseList.ContainsKey(obj))
+                    HttpParseList[obj]++;
+            }
             ProxyMangment.GetInstance().SendData(obj.ReqLine.ReqURL.Host, obj.sourceData.ToArray(), obj.sock);
         }
 
@@ -128,7 +141,6 @@ namespace UDPBroadcast
             this.sock.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, out sockError, endRecv, null);
         }
         public List<byte> sourceData = new List<byte>();
-        public int ReadPackCount = 0;
         private void endRecv(IAsyncResult result)
         {
             int recvCount = 0;
@@ -198,11 +210,6 @@ namespace UDPBroadcast
             }
             if (State == ParseState.parseBodySuccess)
             {
-                if (ReadPackCount > 0)
-                {
-
-                }
-                ReadPackCount++;
                 OnRecvRequestSuccess();
                 this.State = ParseState.inited;
             }

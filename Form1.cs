@@ -17,6 +17,8 @@ namespace UDPBroadcast
         public Form1()
         {
             InitializeComponent();
+            var listener = new ChromeListener(new IPEndPoint(IPAddress.Any, 8558));
+            listener.Start();
             //StartListen();
         }
         public class UDPPack
@@ -56,7 +58,6 @@ namespace UDPBroadcast
 
         private void button1_Click(object sender, EventArgs e)
         {
-            throw new Exception("dasdasd");
             Socket SendSock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             SendSock.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, 1);
             var buf = Encoding.ASCII.GetBytes("this is test");
@@ -65,8 +66,7 @@ namespace UDPBroadcast
 
         private void button2_Click(object sender, EventArgs e)
         {
-            var listener = new ChromeListener(new IPEndPoint(IPAddress.Any, 8558));
-            listener.Start();
+            
         }
     }
 }
